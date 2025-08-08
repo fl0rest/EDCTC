@@ -19,6 +19,11 @@ const (
 	pollInterval = 5 * time.Second
 )
 
+type event struct {
+	Timestamp string `json:"timestamp"`
+	Event     string `json:"event"`
+}
+
 var lastModTime time.Time
 
 func main() {
@@ -126,12 +131,31 @@ func readNewLines(path string, lastSize int64, onLine func(string)) (int64, erro
 	}
 
 	scanner := bufio.NewScanner(file)
-	var lastMatch string
+	var (
+		lastDepotLine string
+		lastDepotTime string
+		lastDockLine  string
+		lastDockTime  string
+	)
+
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.Contains(line, "ColonisationConstructionDepot") &&
-			strings.HasPrefix(line, "{") && strings.HasSuffix(line, "}") {
-			lastMatch = line
+		if !strings.HasPrefix(line, "{") || !strings.HasSuffix(line, "}") {
+			continue
+		}
+
+		var evt event
+		if err := json.Unmarshal([]byte(line), &evt); err != nil {
+			continue
+		}
+
+		switch evt.Event {
+		case "Docked":
+			lastDockLine = line
+			lastDockTime = evt.Timestamp
+		case "ColonisationConstructionDepot":
+			lastDepotLine = line
+			lastDepotTime = evt.Timestamp
 		}
 	}
 
@@ -139,9 +163,15 @@ func readNewLines(path string, lastSize int64, onLine func(string)) (int64, erro
 		return lastSize, err
 	}
 
-	// Only send the last matching line
-	if lastMatch != "" {
-		onLine(lastMatch)
+	var lastSent string
+
+	if lastDockLine != "" && lastDepotLine != "" && lastDockTime == lastDepotTime {
+		fmt.Println("1")
+		if lastSent != lastDockTime {
+			jsonData := "[" + lastDockLine + "," + lastDepotLine + "]"
+			onLine(jsonData)
+			lastSent = lastDockTime
+		}
 	}
 
 	return stat.Size(), nil
