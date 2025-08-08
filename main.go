@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +26,11 @@ func main() {
 	var lastFile string
 	var lastOffset int64
 
+	cmdrName := getCmdrName(journalDir)
+	if cmdrName != "" {
+		fmt.Println("Welcome CMDR", cmdrName)
+	}
+
 	for {
 		latestFile, _, err := findLatestFile(journalDir)
 		if err != nil {
@@ -45,6 +51,32 @@ func main() {
 		}
 		time.Sleep(pollInterval)
 	}
+}
+
+func getCmdrName(path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	var data struct {
+		Name string `json:"Name"`
+	}
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "Commander") {
+			err := json.Unmarshal([]byte(line), &data)
+			if err != nil {
+				fmt.Println("Error fetching CMDR Name", err)
+				return ""
+			}
+		}
+	}
+
+	return data.Name
 }
 
 func sendEventToServer(line string) {
